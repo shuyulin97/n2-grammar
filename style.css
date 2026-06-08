@@ -1,0 +1,23 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono&family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
+
+body {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 80px;
+    line-height: 2;
+    background-color: #212121;
+    color: #E0E0E0;
+    font-family: 'JetBrains Mono', Consolas, Monaco, monospace;;
+}
+
+h1, h2, h3, h4 {
+    color: #FFFFFF;            /* 讓標題或強調字稍微亮一點點，增加層次 */
+}
+
+strong {
+    color: #f3f18b;            /* 讓標題或強調字稍微亮一點點，增加層次 */
+}
+
+.grammar-highlight {
+    color: #ff9d00;             /* 可自由調整顏色 */
+}
