@@ -1,3 +1,18 @@
+import os
+import json
+import re
+import google.generativeai as genai
+
+# 1. 取得環境變數
+api_key = os.environ.get("GEMINI_API_KEY")
+issue_title = os.environ.get("ISSUE_TITLE", "未命名文法")
+issue_body = os.environ.get("ISSUE_BODY", "")
+
+# 2. 設定 Gemini API
+genai.configure(api_key=api_key)
+model = genai.GenerativeModel('gemini-2.5-flash')
+
+# 3. 設計 Prompt，強制要求 JSON 輸出與 HTML 格式
 prompt = f"""
 你是一個專業的日文文法老師與網頁工程師。請根據以下文法主題，整理出結構化的文法解說，並嚴格以 JSON 格式回傳，不要包含 markdown 標籤如 ```json。
 
@@ -31,3 +46,43 @@ prompt = f"""
   "content_html": "<h3>【意味】</h3>\n<p><strong>中文意思</strong></p>\n<h4>【解說】</h4>\n<p>解說內容</p>\n<h4>【接續】</h4>\n<ul><li>接續方式</li></ul>\n<h4>【例文】</h4>\n<ul><li><ruby>日文<rt>にほんご</rt></ruby>例句<button onclick=\"speakSentence('日文例句')\">🔊 發音</button><br>（中文翻譯）</li></ul>\n<hr>\n<h3>【易混淆文法比較】</h3>\n<p>比較內容</p>"
 }}
 """
+
+# 4. 呼叫 AI
+response = model.generate_content(prompt)
+response_text = response.text.strip()
+
+# 移除可能的 markdown 標記以確保 json 解析成功
+if response_text.startswith("```json"):
+    response_text = response_text[7:]
+if response_text.endswith("```"):
+    response_text = response_text[:-3]
+
+ai_data = json.loads(response_text)
+new_filename = ai_data["filename"]
+
+# 5. 讀取並替換 HTML 模板
+ai_data = json.loads(response_text)
+new_filename = ai_data["filename"]
+
+# 讀取並替換 HTML 模板
+with open("template.html", "r", encoding="utf-8") as f:
+    template = f.read()
+
+template = template.replace("{{title}}", ai_data["title"])
+template = template.replace("{{content_html}}", ai_data["content_html"])
+
+# 儲存為新的 HTML 檔案
+with open(new_filename, "w", encoding="utf-8") as f:
+    f.write(template)
+
+# 6. 更新 index.html 的目錄
+with open("index.html", "r", encoding="utf-8") as f:
+    index_content = f.read()
+
+new_link = f'<li><a href="{new_filename}" target="_blank">{ai_data["title"]}</a></li>\n    </ul>'
+index_content = re.sub(r'</ul>', new_link, index_content)
+
+with open("index.html", "w", encoding="utf-8") as f:
+    f.write(index_content)
+
+print(f"成功生成檔案：{new_filename}")
