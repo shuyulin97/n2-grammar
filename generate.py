@@ -28,7 +28,7 @@ prompt = f"""
    - 使用 <h3> 標記主段落（如：<h3>【意味】</h3>、<h3>【易混淆文法比較】</h3>）。
    - 若有兩種以上意思，請分開標示（如：<h3>【意味1】</h3>、<h3>【意味2】</h3>）。
    - 使用 <h4> 標記次段落（如：<h4>【解說】</h4>、<h4>【接續】</h4>、<h4>【例文】</h4>）。
-   - 在每個 <h3> 主段落結束前，請加上 <hr> 作為分隔線。
+   - 請在【解說】、【接續】、【例文】等 <h4> 次段落之間，以及不同的 <h3> 主段落之間，都加上 <hr> 作為分隔線。
 3. 樣式規範：
    - 所有的日文漢字必須使用 <ruby> 與 <rt> 標籤標示讀音。
    - 該文法的核心部分必須使用 <span class="grammar-highlight"> 包裝。
@@ -43,7 +43,7 @@ prompt = f"""
 {{
   "filename": "07-romaji.html",
   "title": "N2文法07「～」標題",
-  "content_html": "<h3>【意味】</h3>\n<p><strong>中文意思</strong></p>\n<h4>【解說】</h4>\n<p>解說內容</p>\n<h4>【接續】</h4>\n<ul><li>接續方式</li></ul>\n<h4>【例文】</h4>\n<ul><li><ruby>日文<rt>にほんご</rt></ruby>例句<button onclick=\"speakSentence('日文例句')\">🔊 發音</button><br>（中文翻譯）</li></ul>\n<hr>\n<h3>【易混淆文法比較】</h3>\n<p>比較內容</p>"
+  "content_html": "<h3>【意味】</h3>\n<p><strong>中文意思</strong></p>\n<hr>\n<h4>【解說】</h4>\n<p>解說內容</p>\n<hr>\n<h4>【接續】</h4>\n<ul><li>接續方式</li></ul>\n<hr>\n<h4>【例文】</h4>\n<ul><li><ruby>日文<rt>にほんご</rt></ruby>例句<button onclick=\"speakSentence('日文例句')\">🔊 發音</button><br>（中文翻譯）</li></ul>\n<hr>\n<h3>【易混淆文法比較】</h3>\n<p>比較內容</p>"
 }}
 """
 
@@ -57,14 +57,10 @@ if response_text.startswith("```json"):
 if response_text.endswith("```"):
     response_text = response_text[:-3]
 
-ai_data = json.loads(response_text)
-new_filename = ai_data["filename"]
-
 # 5. 讀取並替換 HTML 模板
 ai_data = json.loads(response_text)
 new_filename = ai_data["filename"]
 
-# 讀取並替換 HTML 模板
 with open("template.html", "r", encoding="utf-8") as f:
     template = f.read()
 
