@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono&family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap');
 
 body {
     max-width: 600px;
@@ -7,17 +7,103 @@ body {
     line-height: 2;
     background-color: #212121;
     color: #E0E0E0;
-    font-family: 'JetBrains Mono', Consolas, Monaco, monospace;;
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
 }
 
 h1, h2, h3, h4 {
-    color: #FFFFFF;            /* 讓標題或強調字稍微亮一點點，增加層次 */
+    color: #FFFFFF;
 }
 
 strong {
-    color: #f3f18b;            /* 讓標題或強調字稍微亮一點點，增加層次 */
+    color: #f3f18b;
 }
 
 .grammar-highlight {
-    color: #ff9d00;             /* 可自由調整顏色 */
+    color: #ff9d00;
+}
+
+/* 針對帶有注音假名的字稍微加大行高，避免上下行重疊 */
+ruby {
+    line-height: 2.2;
+}
+
+/* ========================================= */
+/* 連結樣式（適用於目錄與各文法頁的連結）        */
+/* ========================================= */
+a:link, a:visited {
+    color: #FFFFFF;
+    text-decoration: none;
+}
+
+a:hover {
+    color: rgb(255, 241, 159);
+    text-decoration: underline;
+}
+
+a:active {
+    color: rgb(236, 226, 122);
+    text-decoration: underline;
+}
+
+/* 各文法頁頂部的「回目錄」連結 */
+.back-link {
+    display: inline-block;
+    margin-bottom: 16px;
+    font-size: 0.95rem;
+}
+
+/* ========================================= */
+/* 易混淆文法比較表格樣式                       */
+/* ========================================= */
+.compare-table {
+    border-collapse: collapse;
+    width: 100%;
+    text-align: left;
+    margin: 16px 0;
+}
+
+.compare-table th,
+.compare-table td {
+    border: 1px solid #555555;
+    padding: 8px;
+}
+
+.compare-table th {
+    background-color: #2d2d2d;
+}
+
+/* 發音按鈕的觸控優化 */
+button {
+    padding: 3px 8px;
+    margin: 4px 0;
+    font-size: 0.8rem;
+    cursor: pointer;
+    background-color: #ffffff;
+    color: #212121;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    font-family: inherit;
+}
+
+/* ========================================= */
+/* 手機版響應式設計 (RWD)                      */
+/* ========================================= */
+@media (max-width: 600px) {
+    body {
+        padding: 20px;       /* 縮小邊距，把空間留給文字 */
+        font-size: 16px;     /* 確保手機基礎字體夠大 */
+    }
+
+    h2 {
+        font-size: 1.5em;
+    }
+    
+    h3 {
+        font-size: 1.2em;
+    }
+
+    button {
+        display: inline-block;
+        margin-top: 8px;
+    }
 }
