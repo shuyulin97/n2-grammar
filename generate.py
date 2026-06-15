@@ -10,7 +10,7 @@ issue_body = os.environ.get("ISSUE_BODY", "")
 
 # 2. 設定 Gemini API
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-2.5-flash')
+model = genai.GenerativeModel('gemini-2.5-pro')
 
 # 3. 設計 Prompt，強制要求 JSON 輸出與 HTML 格式
 prompt = f"""
