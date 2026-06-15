@@ -33,18 +33,19 @@ prompt = f"""
    - 所有的日文漢字必須使用 <ruby> 與 <rt> 標籤標示讀音。
    - 該文法的核心部分必須使用 <span class="grammar-highlight"> 包裝。
 4. 例句規範：
-   - 例句必須包裝在 <ul> 與 <li> 標籤中。
-   - 在每個日文例句的句尾，必須加上按鈕 HTML：<button onclick="speakSentence('純日文字串')">🔊 發音</button>。括號內的字串請務必移除 ruby 標籤。
-   - 例句的中文翻譯請放在 <br> 之後。
-5. 若有易混淆文法，請使用 <table class="compare-table"> 製作比較表格。
+   - 無論是在【例文】區塊，還是在【解說】、【易混淆文法比較】等任何其他區塊中，只要出現「日文句子/例句」，其句尾都「必須」加上按鈕 HTML：<button onclick="speakSentence('純日文字串')">🔊 發音</button>。
+   - 括號內的「純日文字串」請務必移除 ruby 標籤。
+   - 日文句子的中文翻譯請放在 <br> 之後。
+   - 若是專屬於【例文】區塊的例句，請額外包裝在 <ul> 與 <li> 標籤中；若是其他區塊的句子則依據上下文排版即可。
+5. 若有易混淆文法，請使用 <table class="compare-table"> 製作比較表格，表格內的日文例句也必須加上發音按鈕。
 6. filename 欄位請生成一個適合的英文檔名，格式為「數字-羅馬拼音.html」，請接續現有進度命名。
 7. title 欄位請務必將原標題加上中文意思。例如：「N2文法07「～はもちろん / ～はもとより」不用說...、當然...」。
 
 【輸出的 JSON 結構】
 {{
   "filename": "07-romaji.html",
-  "title": "N2文法07「～」標題",
-  "content_html": "<h3>【意味】</h3>\n<p><strong>中文意思</strong></p>\n<hr>\n<h4>【解說】</h4>\n<p>解說內容</p>\n<hr>\n<h4>【接續】</h4>\n<ul><li>接續方式</li></ul>\n<hr>\n<h4>【例文】</h4>\n<ul><li><ruby>日文<rt>にほんご</rt></ruby>例句<button onclick=\"speakSentence('日文例句')\">🔊 發音</button><br>（中文翻譯）</li></ul>\n<hr>\n<h3>【易混淆文法比較】</h3>\n<p>比較內容</p>"
+  "title": "N2文法07「～」標題＋中文意思",
+  "content_html": "<h3>【意味】</h3>\n<p><strong>中文意思</strong></p>\n<hr>\n<h4>【解說】</h4>\n<p>解說內容</p>\n<ul><li><ruby>他區塊日文<rt>にほんご</rt></ruby>句子<button onclick=\"speakSentence('他區塊日文句子')\">🔊 發音</button><br>（中文翻譯）</li></ul>\n<hr>\n<h4>【接續】</h4>\n<ul><li>接續方式</li></ul>\n<hr>\n<h4>【例文】</h4>\n<ul><li><ruby>日文<rt>にほんご</rt></ruby>例句<button onclick=\"speakSentence('日文例句')\">🔊 發音</button><br>（中文翻譯）</li></ul>\n<hr>\n<h3>【易混淆文法比較】</h3>\n<p>比較內容</p>"
 }}
 """
 
