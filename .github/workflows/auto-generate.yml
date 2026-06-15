@@ -1,0 +1,52 @@
+name: Auto Generate Grammar Page
+
+# 設定觸發條件：當新增一個 Issue 時觸發
+on:
+  issues:
+    types: [opened]
+
+# 設定權限，允許 Actions 提交(Commit)修改後的程式碼並關閉 Issue
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  generate-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 抓取儲存庫的程式碼
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. 設定 Python 環境
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # 3. 安裝 Gemini API 必要的 Python 套件
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-generativeai
+
+      # 4. 執行 Python 腳本，將 Issue 標題、內容與 API 金鑰作為環境變數傳入
+      - name: Run generation script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: python generate.py
+
+      # 5. 將新增的 HTML 檔案和修改後的 index.html Commit 並 Push 到儲存庫
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Auto-generated grammar page for ${{ github.event.issue.title }}"
+
+      # 6. 自動關閉該 Issue 並留言通知
+      - name: Close Issue
+        uses: peter-evans/close-issue@v3
+        with:
+          comment: "✅ 文法頁面已成功由 AI 生成並更新至網站目錄！"
