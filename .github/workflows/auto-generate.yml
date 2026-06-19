@@ -13,8 +13,8 @@ permissions:
 jobs:
   generate-and-publish:
     runs-on: ubuntu-latest
-    # 限制只有標題包含 [N2] 的 Issue 才會觸發，避免誤闖的 Issue 消耗 API 或弄亂首頁
-    if: startsWith(github.event.issue.title, '[N2]') 
+    # 限制只有標題包含N2的 Issue 才會觸發，避免誤闖的 Issue 消耗 API 或弄亂首頁
+    if: startsWith(github.event.issue.title, 'N2') 
 
     steps:
       # 1. 抓取儲存庫的程式碼
