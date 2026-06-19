@@ -1,26 +1,35 @@
 import os
 import json
-import re
 import google.generativeai as genai
+import glob
 
 # 1. 取得環境變數
 api_key = os.environ.get("GEMINI_API_KEY")
 issue_title = os.environ.get("ISSUE_TITLE", "未命名文法")
 issue_body = os.environ.get("ISSUE_BODY", "")
 
-# 2. 設定 Gemini API
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-2.5-flash')
+# 2. 自動計算下一個檔案序號
+# 尋找目前目錄下所有開頭為數字的 html 檔案
+existing_files = glob.glob("[0-9][0-9]-*.html")
+next_number = len(existing_files) + 1
+formatted_number = f"{next_number:02d}"
 
-# 3. 設計 Prompt，強制要求 JSON 輸出與 HTML 格式
+# 3. 設定 Gemini API (強制設定為 JSON 輸出)
+genai.configure(api_key=api_key)
+model = genai.GenerativeModel(
+    'gemini-2.5-flash',
+    generation_config={"response_mime_type": "application/json"}
+)
+
+# 4. 更新 Prompt (移除原本要求它算數字的指令，改要求 slug)
 prompt = f"""
-你是一個專業的日文文法老師與網頁工程師。請根據以下文法主題，整理出結構化的文法解說，並嚴格以 JSON 格式回傳，不要包含 markdown 標籤如 ```json。
+你是一個專業的日文文法老師與網頁工程師。請根據以下文法主題，整理出結構化的文法解說。
 
 【內容生成規則】
 1. 講解 N2 文法主題：「{issue_title}」
-2. 請比照「時雨之町（時雨日文）：https://www.sigure.tw/learn-japanese/grammar/n3/」網站的風格與架構進行深入淺出的講解。
+2. 請比照「時雨之町（時雨日文）：https://www.sigure.tw/learn-japanese/grammar/n3/」網站的風格進行深入淺出的講解。
 3. 「接續」的部分，請嚴格以「學校文法（國文法）」來做說明。
-4. 使用者提供的草稿或備註（若有）：{issue_body}
+4. 參考備註：{issue_body}
 
 【HTML 排版與格式化規則】
 1. 請產出完整的 HTML 內容放入 `content_html` 欄位。
@@ -44,25 +53,18 @@ prompt = f"""
 
 【輸出的 JSON 結構】
 {{
-  "filename": "07-romaji.html",
-  "title": "N2文法07「～」標題＋中文意思",
-  "content_html": "<h3>【意味】</h3>\n<p><strong>中文意思</strong></p>\n<hr>\n<h4>【解說】</h4>\n<p>解說內容</p>\n<ul><li><ruby>他區塊日文<rt>にほんご</rt></ruby>句子<button onclick=\"speakSentence('他區塊日文句子')\">🔊 發音</button><br>（中文翻譯）</li></ul>\n<hr>\n<h4>【接續】</h4>\n<ul><li>接續方式</li></ul>\n<hr>\n<h4>【例文】</h4>\n<ul><li><ruby>日文<rt>にほんご</rt></ruby>例句<button onclick=\"speakSentence('日文例句')\">🔊 發音</button><br>（中文翻譯）</li></ul>\n<hr>\n<h3>【易混淆文法比較】</h3>\n<p>比較內容</p>"
+  "romaji_slug": "romaji",  // 只需要提供該文法核心的羅馬拼音，不需要數字和副檔名
+  "title": "N2文法{formatted_number}「～」標題＋中文意思",
+  "content_html": "..."
 }}
 """
 
-# 4. 呼叫 AI
+# 5. 呼叫 AI 並解析 JSON
 response = model.generate_content(prompt)
-response_text = response.text.strip()
+ai_data = json.loads(response.text) # 因為有 response_mime_type，可以直接 load
 
-# 移除可能的 markdown 標記以確保 json 解析成功
-if response_text.startswith("```json"):
-    response_text = response_text[7:]
-if response_text.endswith("```"):
-    response_text = response_text[:-3]
-
-# 5. 讀取並替換 HTML 模板
-ai_data = json.loads(response_text)
-new_filename = ai_data["filename"]
+# 6. 組裝檔名與讀取 HTML 模板
+new_filename = f"{formatted_number}-{ai_data['romaji_slug']}.html"
 
 with open("template.html", "r", encoding="utf-8") as f:
     template = f.read()
@@ -74,12 +76,12 @@ template = template.replace("{{content_html}}", ai_data["content_html"])
 with open(new_filename, "w", encoding="utf-8") as f:
     f.write(template)
 
-# 6. 更新 index.html 的目錄
+# 7. 更新 index.html 的目錄 (透過註解錨點精準替換)
 with open("index.html", "r", encoding="utf-8") as f:
     index_content = f.read()
 
-new_link = f'<li><a href="{new_filename}" target="_blank">{ai_data["title"]}</a></li>\n    </ul>'
-index_content = re.sub(r'</ul>', new_link, index_content)
+new_link_html = f'<li><a href="{new_filename}" target="_blank">{ai_data["title"]}</a></li>\n        '
+index_content = index_content.replace('', new_link_html)
 
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(index_content)
