@@ -48,8 +48,7 @@ prompt = f"""
    - 日文句子的中文翻譯請放在 <br> 之後。
    - 若是專屬於【例文】區塊的例句，請額外包裝在 <ul> 與 <li> 標籤中；若是其他區塊的句子則依據上下文排版即可。
 5. 若有易混淆文法，請使用 <table class="compare-table"> 製作比較表格，表格內的日文例句也必須加上發音按鈕。
-6. filename 欄位請生成一個適合的英文檔名，格式為「數字-羅馬拼音.html」，請接續現有進度命名。
-7. title 欄位請務必將原標題加上中文意思。例如：「N2文法07「～はもちろん / ～はもとより」不用說...、當然...」。
+6. 原標題請務必加上中文意思。例如：「N2文法07「～はもちろん / ～はもとより」不用說...、當然...」。
 
 【輸出的 JSON 結構】
 {{
@@ -80,10 +79,17 @@ with open(new_filename, "w", encoding="utf-8") as f:
 with open("index.html", "r", encoding="utf-8") as f:
     index_content = f.read()
 
-new_link_html = f'<li><a href="{new_filename}" target="_blank">{ai_data["title"]}</a></li>\n        '
-index_content = index_content.replace('', new_link_html)
+# 使用字串拼接避開網頁介面吃字的問題
+anchor = "<" + "!-- NEW_LINKS_HERE --" + ">"
+
+# 將新連結與錨點組合在一起
+new_link_html = f'<li><a href="{new_filename}" target="_blank">{ai_data["title"]}</a></li>\n        {anchor}'
+
+# 精準尋找錨點並替換
+index_content = index_content.replace(anchor, new_link_html)
 
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(index_content)
+
 
 print(f"成功生成檔案：{new_filename}")
