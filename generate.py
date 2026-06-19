@@ -79,14 +79,11 @@ with open(new_filename, "w", encoding="utf-8") as f:
 with open("index.html", "r", encoding="utf-8") as f:
     index_content = f.read()
 
-# 使用字串拼接避開網頁介面吃字的問題
-anchor = "<" + "!-- NEW_LINKS_HERE --" + ">"
-
 # 將新連結與錨點組合在一起
-new_link_html = f'<li><a href="{new_filename}" target="_blank">{ai_data["title"]}</a></li>\n        {anchor}'
+new_link_html = f'<li><a href="{new_filename}" target="_blank">{ai_data["title"]}</a></li>\n         <!-- NEW_LINKS_HERE -->'
 
 # 精準尋找錨點並替換
-index_content = index_content.replace(anchor, new_link_html)
+index_content = index_content.replace('<!-- NEW_LINKS_HERE -->', new_link_html)
 
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(index_content)
