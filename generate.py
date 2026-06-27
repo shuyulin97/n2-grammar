@@ -88,15 +88,17 @@ prompt = f"""
 - 使用 <table class="compare-table"> 製作，欄位至少包含「文法句型」與「核心差異/使用限制」
 - 表格內的日文例句也要加上發音按鈕
 
+title 欄位：
+- 只填「日文文法項目」＋中文意思，格式固定為「～文法項目」中文意思。範例：「～ばかりだ」越來越...／只等著...
+- 禁止加上任何前綴（N2、N2文法、文法等），數字編號也不需要，Python 腳本會自動加上。
+
 ---
 
-【輸出格式】
-請輸出以下 JSON（只輸出 JSON，不要有其他說明文字）：
-
+【輸出的 JSON 結構】
 {{
-  "romaji_slug": "只填文法核心的羅馬拼音（小寫、空格用連字號，不含數字與副檔名）",
-  "title": "「{issue_title}」的中文意思說明（只填中文意思，例如：「～ばかりだ」越來越...／只等著...）",
-  "content_html": "完整的 HTML 內容字串"
+  "romaji_slug": "romaji",  // 只需要提供該文法核心的羅馬拼音，不需要數字和副檔名
+  "title": "「～文法項目」中文意思",  // 只填文法項目與中文意思，禁止加任何前綴
+  "content_html": "..."
 }}
 """
 
@@ -108,11 +110,14 @@ ai_data = json.loads(response.text)
 #    這樣就算 AI 沒有在 title 加編號，這裡也會統一補上
 raw_title = ai_data["title"].strip()
 
-# 移除 AI 可能自行加上的編號前綴（如「N2文法07」），避免重複
-raw_title = re.sub(r'^N2文法\d+\s*', '', raw_title)
-
+# 移除 AI 可能自行加上的各種前綴，例如：
+#   「N2文法07」、「N2 文法07」、「N2」、「文法07」 等
+raw_title = re.sub(r'^(N\d+\s*)?文法\d*\s*', '', raw_title)  # 移除「N2文法07」「文法07」
+raw_title = re.sub(r'^N\d+\s*',              '', raw_title)  # 移除殘留的「N2」
+ 
 full_title = f"N2文法{formatted_number}{raw_title}"
 ai_data["title"] = full_title
+
 
 # 7. 組裝檔名與讀取 HTML 模板
 new_filename = f"{formatted_number}-{ai_data['romaji_slug']}.html"
