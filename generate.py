@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import google.generativeai as genai
 import glob
 
@@ -9,84 +10,136 @@ issue_title = os.environ.get("ISSUE_TITLE", "未命名文法")
 issue_body = os.environ.get("ISSUE_BODY", "")
 
 # 2. 自動計算下一個檔案序號
-# 尋找目前目錄下所有開頭為數字的 html 檔案
 existing_files = glob.glob("[0-9][0-9]-*.html")
 next_number = len(existing_files) + 1
 formatted_number = f"{next_number:02d}"
 
-# 3. 設定 Gemini API (強制設定為 JSON 輸出)
+# 3. 設定 Gemini API
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel(
     'gemini-2.5-flash',
     generation_config={"response_mime_type": "application/json"}
 )
 
-# 4. 更新 Prompt (移除原本要求它算數字的指令，改要求 slug)
+# 4. Prompt
 prompt = f"""
-你是一個專業的日文文法老師與網頁工程師。請根據以下文法主題，整理出結構化的文法解說。
+你是一個專業的日文文法老師，也熟悉 HTML 排版。請根據以下文法主題，產出詳細的文法解說頁面內容。
 
-【內容生成規則】
-1. 講解 N2 文法主題：「{issue_title}」
-2. 請比照「時雨之町（時雨日文）：https://www.sigure.tw/learn-japanese/grammar/n3/」網站的風格進行深入淺出的講解。
-3. 「接續」的部分，請嚴格以「學校文法（國文法）」來做說明。
-4. 參考備註：{issue_body}
+【文法主題】
+「{issue_title}」
 
-【HTML 排版與格式化規則】
-1. 請產出完整的 HTML 內容放入 `content_html` 欄位。
-2. 標題層級規範：
-   - 使用 <h3> 標記主段落（如：<h3>【意味】</h3>、<h3>【易混淆文法比較】</h3>）。
-   - 若有兩種以上意思，請分開標示（如：<h3>【意味1】</h3>、<h3>【意味2】</h3>）。
-   - 使用 <h4> 標記次段落（如：<h4>【解說】</h4>、<h4>【接續】</h4>、<h4>【例文】</h4>）。
-   - 請在【解說】、【接續】、【例文】等 <h4> 次段落之間，以及不同的 <h3> 主段落之間，都加上 <hr> 作為分隔線。
-3. 樣式規範：
-   - 針對日文例文中的「日文漢字」：使用 <ruby> 與 <rt> 標籤標註振假名發音
-   - 重要禁止事項：不需要對中文解說中的「一般繁體中文字」使用 <ruby> 與 <rt> 標籤
-   - 該文法的核心部分必須使用 <span class="grammar-highlight"> 包裝。
-4. 例句規範：
-   - 無論是在【例文】區塊，還是在【解說】、【易混淆文法比較】等任何其他區塊中，只要出現「日文句子/例句」，其句尾都「必須」加上按鈕 HTML：<button onclick="speakSentence('純日文字串')">🔊 發音</button>。
-   - 括號內的「純日文字串」請務必移除 ruby 標籤。
-   - 日文句子的中文翻譯請放在 <br> 之後。
-   - 若是專屬於【例文】區塊的例句，請額外包裝在 <ul> 與 <li> 標籤中；若是其他區塊的句子則依據上下文排版即可。
-5. 若有易混淆文法，請使用 <table class="compare-table"> 製作比較表格，表格內的日文例句也必須加上發音按鈕。
-6. title 欄位請直接輸出：「文法項目」＋中文意思，例如：「～はもちろん / ～はもとより」不用說...、當然...。「不要」加上 N2 文法等前綴字眼。
+【參考備註（若有）】
+{issue_body}
 
-【輸出的 JSON 結構】
+---
+
+【內容深度要求】
+請比照「時雨之町（時雨日文）」的風格進行講解，每個區塊都要達到以下深度：
+
+1. 【意味】
+   - 說明核心意思
+   - 特別說明語氣傾向：是否主要用於正面/負面/中性情境？有無情感色彩？
+
+2. 【解說】
+   - 用「學校文法（國文法）」角度解析詞性來源（例如：「あげく 本身是形式名詞，因此前方修飾語必須用連體修飾語」）
+   - 說明此文法的使用限制或注意事項（例如：後句不能接意志、命令、否定的情境）
+
+3. 【接續】
+   - 動詞接法與名詞接法「分開條列」，並說明每種接法的原理
+   - 若有特殊音便或助詞需補充，請在條列項目下方加上說明
+
+4. 【例文】
+   - 至少 3 句，涵蓋不同使用情境
+   - 如有兩種意思，每種意思各自給例文區塊
+
+5. 【易混淆文法比較】（若有相近文法）
+   - 說明此文法「不能用」的情境（搭配 ❌ 示範句），與能用的文法做對比
+   - 請使用比較表格或條列式清楚呈現差異
+
+---
+
+【HTML 排版規則】
+
+標題層級：
+- <h3> 標記主段落（如：<h3>【意味】</h3>、<h3>【易混淆文法比較：A VS B】</h3>）
+- 若有兩種以上意思，分開標示（<h3>【意味1】</h3>、<h3>【意味2】</h3>）
+- <h4> 標記次段落（<h4>【解說】</h4>、<h4>【接續】</h4>、<h4>【例文】</h4>）
+- 每個 <h3> 與 <h4> 之間，以及 <h4> 區塊之間，加上 <hr> 作為分隔線
+
+樣式規範：
+- 日文例句中的漢字：使用 <ruby>漢字<rt>讀音</rt></ruby> 標註振假名
+- 禁止對繁體中文字使用 <ruby> 標籤
+- 該文法的核心語法部分：使用 <span class="grammar-highlight"> 包裝
+- 需要強調的說明文字：使用 <strong> 包裝
+
+例句排版規範：
+- 只要出現日文例句，句尾「一律」加上發音按鈕：
+  <button onclick="speakSentence('純日文字串，不含HTML標籤')">🔊 發音</button>
+- 發音按鈕後換行，中文翻譯放在 <br> 之後，以（）包住
+- 【例文】區塊的例句用 <ul><li>...</li></ul> 包裝
+- 其他區塊（解說、比較）的例句依上下文直接排版，不強制加 <ul>
+
+比較表格：
+- 使用 <table class="compare-table"> 製作，欄位至少包含「文法句型」與「核心差異/使用限制」
+- 表格內的日文例句也要加上發音按鈕
+
+---
+
+【輸出格式】
+請輸出以下 JSON（只輸出 JSON，不要有其他說明文字）：
+
 {{
-  "romaji_slug": "romaji",  // 只需要提供該文法核心的羅馬拼音，不需要數字和副檔名
-  "title": "N2文法{formatted_number}「～」標題＋中文意思",
-  "content_html": "..."
+  "romaji_slug": "只填文法核心的羅馬拼音（小寫、空格用連字號，不含數字與副檔名）",
+  "title": "「{issue_title}」的中文意思說明（只填中文意思，例如：「～ばかりだ」越來越...／只等著...）",
+  "content_html": "完整的 HTML 內容字串"
 }}
 """
 
 # 5. 呼叫 AI 並解析 JSON
 response = model.generate_content(prompt)
-ai_data = json.loads(response.text) # 因為有 response_mime_type，可以直接 load
+ai_data = json.loads(response.text)
 
-# 6. 組裝檔名與讀取 HTML 模板
+# 6. 在 Python 端強制加上編號前綴，不依賴 AI
+#    這樣就算 AI 沒有在 title 加編號，這裡也會統一補上
+raw_title = ai_data["title"].strip()
+
+# 移除 AI 可能自行加上的編號前綴（如「N2文法07」），避免重複
+raw_title = re.sub(r'^N2文法\d+\s*', '', raw_title)
+
+full_title = f"N2文法{formatted_number}{raw_title}"
+ai_data["title"] = full_title
+
+# 7. 組裝檔名與讀取 HTML 模板
 new_filename = f"{formatted_number}-{ai_data['romaji_slug']}.html"
 
 with open("template.html", "r", encoding="utf-8") as f:
     template = f.read()
 
-template = template.replace("{{title}}", ai_data["title"])
+# template.html 中的佔位符：{{title}} 和 {{content_html}}
+template = template.replace("{{title}}", full_title)
 template = template.replace("{{content_html}}", ai_data["content_html"])
 
-# 儲存為新的 HTML 檔案
+# 儲存新的 HTML 檔案
 with open(new_filename, "w", encoding="utf-8") as f:
     f.write(template)
 
-# 7. 更新 index.html 的目錄 (透過註解錨點精準替換)
+print(f"✅ 已產生檔案：{new_filename}（標題：{full_title}）")
+
+# 8. 更新 index.html（透過錨點精準插入）
 with open("index.html", "r", encoding="utf-8") as f:
     index_content = f.read()
 
-# 將新連結與錨點組合在一起
-new_link_html = f'<li><a href="{new_filename}" target="_blank">{ai_data["title"]}</a></li>\n         <!-- NEW_LINKS_HERE -->'
-
-# 精準尋找錨點並替換
-index_content = index_content.replace('<!-- NEW_LINKS_HERE -->', new_link_html)
-
-with open("index.html", "w", encoding="utf-8") as f:
-    f.write(index_content)
-
-
-print(f"成功生成檔案：{new_filename}")
+if f'href="{new_filename}"' in index_content:
+    print(f"⚠️  index.html 已有 {new_filename} 的連結，略過更新。")
+else:
+    new_link_html = (
+        f'<li><a href="{new_filename}" target="_blank">{full_title}</a></li>\n'
+        f'        <!-- NEW_LINKS_HERE -->'
+    )
+    if '<!-- NEW_LINKS_HERE -->' in index_content:
+        index_content = index_content.replace('<!-- NEW_LINKS_HERE -->', new_link_html)
+        with open("index.html", "w", encoding="utf-8") as f:
+            f.write(index_content)
+        print(f"✅ 已將連結加入 index.html")
+    else:
+        print("⚠️  index.html 找不到 <!-- NEW_LINKS_HERE --> 錨點，請手動加入連結。")
