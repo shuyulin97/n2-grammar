@@ -70,6 +70,11 @@ prompt = f"""
 - 日文例句中的漢字：使用 <ruby>漢字<rt>讀音</rt></ruby> 標註振假名
 - 禁止對繁體中文字使用 <ruby> 標籤
 - 該文法的核心語法部分：使用 <span class="grammar-highlight"> 包裝
+-【重要】當某個日文漢字「同時需要振假名 AND grammar-highlight 橘色標示」時，巢狀順序必須是：
+     <ruby> 在外層，<span class="grammar-highlight"> 在內層包住漢字本體，<rt> 放在 span 之後：
+     ✅ 正確：<ruby><span class="grammar-highlight">挙句</span><rt>あげく</rt></ruby>
+     ❌ 錯誤：<span class="grammar-highlight"><ruby>挙句<rt>あげく</rt></ruby></span>
+     錯誤寫法會導致振假名完全無法顯示，請務必遵守。
 - 需要強調的說明文字：使用 <strong> 包裝
 
 例句排版規範：
