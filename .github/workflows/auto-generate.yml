@@ -27,16 +27,16 @@ jobs:
         with:
           python-version: '3.10'
 
-      # 3. 安裝 Gemini API 必要的 Python 套件
+      # 3. 安裝必要的 Python 套件
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install google-generativeai
+          pip install openai
 
       # 4. 執行 Python 腳本，將 Issue 標題、內容與 API 金鑰作為環境變數傳入
       - name: Run generation script
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLAMA_API_KEY: ${{ secrets.LLAMA_API_KEY }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: python generate.py
