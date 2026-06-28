@@ -1,24 +1,22 @@
 import os
 import json
 import re
-from openai import OpenAI
+from google import genai
+from google.genai import types
 import glob
 
 # 1. 取得環境變數
-api_key    = os.environ.get("LLAMA_API_KEY")
+api_key     = os.environ.get("GEMINI_API_KEY")
 issue_title = os.environ.get("ISSUE_TITLE", "未命名文法")
 issue_body  = os.environ.get("ISSUE_BODY", "")
 
 # 2. 自動計算下一個檔案序號
-existing_files = glob.glob("[0-9][0-9]-*.html")
-next_number    = len(existing_files) + 1
+existing_files   = glob.glob("[0-9][0-9]-*.html")
+next_number      = len(existing_files) + 1
 formatted_number = f"{next_number:02d}"
 
-# 3. 設定本地 LLaMA/Gemma API（OpenAI SDK 格式）
-client = OpenAI(
-    api_key=api_key,
-    base_url="https://gangway-remedy-unrobed.ngrok-free.dev/v1",
-)
+# 3. 設定 Gemini API（新版 google-genai SDK）
+client = genai.Client(api_key=api_key)
 
 # ---------------------------------------------------------------
 # 4. System prompt：只放「角色定義 + 輸出格式規則」，不放 HTML 範例
@@ -40,10 +38,11 @@ system_prompt = """你是一個專業的日文文法老師，同時熟悉 HTML �
 【content_html 的 HTML 規則】
 - h3 用於主段落標題（意味、接續說明、易混淆比較），h4 用於次段落（解說、接續、例文）
 - 每個 h3/h4 之前加 hr 分隔線
-- 日文漢字加振假名：ruby 包漢字，rt 放讀音
-- 文法核心詞用 span class="grammar-highlight" 標示
-- 漢字同時需要振假名和 highlight 時：ruby 在外，span 在內包漢字，rt 在 span 後
-- 每句日文例句後加發音按鈕：button onclick="speakSentence('純日文')"，按鈕標籤為「🔊 發音」
+- 日文漢字加上振假名：ruby 包漢字，rt 放讀音
+- 禁止對繁體中文字使用 ruby 標籤
+- 日文例句中提及的【文法主題】的日文字，使用 span class="grammar-highlight" 標示
+- 日文漢字同時需要振假名和（AND） grammar-highlight 時：ruby 在外，span 在內包漢字，rt 在 span 後
+- 只要出現日文例句，句尾「一律」加上發音按鈕：button onclick="speakSentence('純日文')"，按鈕標籤為「🔊 發音」
 - 例文區塊用 ul/li 包裝，中文翻譯放在 br 後用（）包住
 - 易混淆文法用 table class="compare-table" 製作比較表
 - 禁止對繁體中文使用 ruby 標籤"""
@@ -51,91 +50,52 @@ system_prompt = """你是一個專業的日文文法老師，同時熟悉 HTML �
 # ---------------------------------------------------------------
 # 5. User prompt：只放「文法主題 + 內容要求」，不重複 HTML 規則
 # ---------------------------------------------------------------
-user_prompt = f"""請為以下 N2 文法主題產出教學頁面：
+user_prompt = f"""請比照時雨日文網站講解風格：https://www.sigure.tw/learn-japanese/grammar/n3/，為以下 N2 文法主題產出教學頁面：
 
 文法主題：「{issue_title}」
 補充備註：{issue_body if issue_body else "（無）"}
 
 內容請包含：
 1. 【意味】核心意思、語氣傾向（正面/負面/中性）
-2. 【解說】學校文法（國文法）角度的詞性解析、使用限制
-3. 【接續】動詞與名詞各自的接法，分開條列並說明原理
-4. 【例文】至少 3 句，涵蓋不同情境
+2. 【解說】學校文法（國文法）角度的詞性解析、使用限制（例如：「あげく 本身是形式名詞，因此前方修飾語必須用連體修飾語」）
+3. 【接續】動詞與名詞各自的接法，分開條列並說明原理，動詞變化的部分，也以「學校文法（國文法）」角度說明（例如：未然形、連用形、連體形、終止形...）
+4. 【例文】至少 3 句，涵蓋不同情境與接續變化
 5. 【易混淆文法比較】若有相近文法，說明差異並給出 ❌ 錯誤示範"""
 
 # ---------------------------------------------------------------
-# 6. 呼叫 API
-#    Gemma/llama.cpp 對 system role 支援不穩定，有時回傳空字串。
-#    最穩定的做法：把所有指令合併成單一 user message。
+# 6. 呼叫 Gemini API
+#    - system_instruction 對應 system prompt
+#    - contents 對應 user prompt
+#    - response_mime_type 強制輸出合法 JSON，完全不需要 regex 容錯
 # ---------------------------------------------------------------
-combined_prompt = system_prompt + "\n\n" + user_prompt
-
-print("⏳ 正在呼叫 API...")
-response = client.chat.completions.create(
-    model="local-model",   # llama.cpp 忽略此欄位
-    messages=[
-        {"role": "user", "content": combined_prompt},
-    ],
-    temperature=0.3,
-    max_tokens=6000,
+print("⏳ 正在呼叫 Gemini API...")
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=user_prompt,
+    config=types.GenerateContentConfig(
+        system_instruction=system_prompt,
+        temperature=0.3,
+        max_output_tokens=6000,
+        response_mime_type="application/json",
+    ),
 )
 
-raw_text = response.choices[0].message.content
-if raw_text is None:
-    raw_text = ""
-raw_text = raw_text.strip()
-
+raw_text = response.text.strip()
 print(f"✅ API 回應完成，長度：{len(raw_text)} 字元")
 
-# 回應為空時直接印出完整 response 物件方便除錯
-if len(raw_text) == 0:
-    print(f"❌ 回應為空，完整 response 物件：")
-    print(f"  finish_reason : {response.choices[0].finish_reason}")
-    print(f"  usage         : {response.usage}")
-    raise ValueError("API 回傳空回應，請檢查模型是否正常運作。")
-
-# 7. 解析回應
-#
-# Gemma 等本地模型常在 content_html 裡產出未跳脫的引號，
-# 導致 json.loads() 失敗。解法：先嘗試標準解析，
-# 失敗時改用 regex 逐欄位抽取，完全繞過引號跳脫問題。
-
-def extract_by_regex(text):
-    """從模型回應中用 regex 直接抽取三個欄位，不依賴 JSON 解析。"""
-    slug  = re.search(r'"romaji_slug"\s*:\s*"([^"]+)"', text)
-    title = re.search(r'"title"\s*:\s*"([^"]+)"',       text)
-    # content_html 的值可能包含引號，因此從第一個 <  抓到最後一個 >
-    html  = re.search(r'"content_html"\s*:\s*"(.*)"',   text, re.S)
-
-    if not (slug and title and html):
-        raise ValueError("regex 無法抽取三個必要欄位，請檢查 AI 原始回應。")
-
-    # 還原模型可能做了的基本跳脫（\n → 換行、\" → "）
-    content = html.group(1)
-    content = content.replace('\\n', '\n').replace('\\"', '"')
-
-    return {
-        "romaji_slug":  slug.group(1).strip(),
-        "title":        title.group(1).strip(),
-        "content_html": content,
-    }
-
-# 移除可能包住 JSON 的 markdown 區塊
+# 7. 解析 JSON
+# Gemini 有 response_mime_type 強制輸出合法 JSON，
+# 理論上直接 json.loads 即可，但仍保留 markdown 清理作為保險。
 cleaned = re.sub(r'^```(?:json)?\s*', '', raw_text)
 cleaned = re.sub(r'\s*```$', '', cleaned).strip()
 
 try:
     ai_data = json.loads(cleaned)
-    print("✅ JSON 標準解析成功")
+    print("✅ JSON 解析成功")
 except json.JSONDecodeError as e:
-    print(f"⚠️  JSON 標準解析失敗（{e}），改用 regex 抽取...")
-    try:
-        ai_data = extract_by_regex(raw_text)
-        print("✅ regex 抽取成功")
-    except ValueError as e2:
-        print(f"❌ regex 抽取也失敗：{e2}")
-        print(f"--- AI 原始回應（前 800 字）---\n{raw_text[:800]}\n---")
-        raise
+    print(f"❌ JSON 解析失敗：{e}")
+    print(f"--- AI 原始回應（前 800 字）---\n{raw_text[:800]}\n---")
+    raise
 
 # 8. Python 端強制組裝標題（不信任 AI 的格式）
 raw_title = ai_data["title"].strip()
