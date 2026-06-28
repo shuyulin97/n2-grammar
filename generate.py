@@ -23,7 +23,6 @@ client = genai.Client(api_key=api_key)
 #    目的：讓模型清楚知道輸出結構，減少 prompt token 數
 # ---------------------------------------------------------------
 system_prompt = """你是一個專業的日文文法老師，同時熟悉 HTML 排版。
-
 你的任務是針對指定的 N2 日文文法主題，產出一份教學解說頁面。
 
 【輸出規則】
@@ -36,16 +35,36 @@ system_prompt = """你是一個專業的日文文法老師，同時熟悉 HTML �
 }
 
 【content_html 的 HTML 規則】
-- h3 用於主段落標題（意味、接續說明、易混淆比較），h4 用於次段落（解說、接續、例文）
+- h3 用於主段落標題（意味、易混淆比較、總結），h4 用於次段落（解說、接續、例文）
+- 若文法有兩種以上用法，主段落分開標示為【意味1】【意味2】，接續和例文也各自分開
 - 每個 h3/h4 之前加 hr 分隔線
 - 日文漢字加上振假名：ruby 包漢字，rt 放讀音
 - 禁止對繁體中文字使用 ruby 標籤
-- 日文例句中提及的【文法主題】的日文字，使用 span class="grammar-highlight" 標示
-- 日文漢字同時需要振假名和（AND） grammar-highlight 時：ruby 在外，span 在內包漢字，rt 在 span 後
-- 只要出現日文例句，句尾「一律」加上發音按鈕：button onclick="speakSentence('純日文')"，按鈕標籤為「🔊 發音」
+- 日文例句中的【文法主題】核心字，使用 span class="grammar-highlight" 標示
+- 漢字同時需要振假名 AND grammar-highlight 時，巢狀順序務必如下：
+  ✅ 正確：<ruby><span class="grammar-highlight">関</span><rt>かか</rt></ruby><span class="grammar-highlight">わる</span>
+  ❌ 錯誤：<span class="grammar-highlight"><ruby>挙句<rt>あげく</rt></ruby></span>
+  錯誤寫法會導致振假名不顯示
+- - 除了文法主題以外，其他需要強調的說明文字：使用 strong 包裝
+- 只要出現日文例句，句尾一律加發音按鈕：<button onclick="speakSentence('純日文')">🔊 發音</button>
 - 例文區塊用 ul/li 包裝，中文翻譯放在 br 後用（）包住
-- 易混淆文法用 table class="compare-table" 製作比較表
-- 禁止對繁體中文使用 ruby 標籤"""
+- 易混淆文法用 table class="compare-table" 製作比較表"""
+
+user_prompt = f"""請比照時雨日文網站講解風格（https://www.sigure.tw/learn-japanese/grammar/n3/），
+為以下 N2 文法主題產出教學頁面：
+
+文法主題：「{issue_title}」
+補充備註：{issue_body if issue_body else "（無）"}
+
+內容請依序包含：
+1. 【意味】核心意思與語氣傾向（正面/負面/中性）；若有兩種以上用法請分為【意味1】【意味2】
+2. 【解說】以學校文法（國文法）角度解析詞性來源與使用限制
+   例：「あげく 本身是形式名詞，因此前方修飾語必須用連體修飾語（連體形）」
+3. 【接續】動詞與名詞各自的接法分開條列並說明原理；
+   動詞變化以學校文法角度說明（未然形、連用形、連體形、終止形等）；
+4. 【例文】至少 3 句，涵蓋不同情境與接續變化；若有兩種意思，每種意思各給例文區塊
+5. 【易混淆文法比較】若有相近文法，說明差異，並給出 ❌ 不能使用的錯誤示範句
+6. 【總結】用 ol 條列 3~4 點，幫讀者快速複習接續方式、核心意思與使用秘訣"""
 
 # ---------------------------------------------------------------
 # 5. User prompt：只放「文法主題 + 內容要求」，不重複 HTML 規則
