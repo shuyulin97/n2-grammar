@@ -64,21 +64,35 @@ user_prompt = f"""請為以下 N2 文法主題產出教學頁面：
 5. 【易混淆文法比較】若有相近文法，說明差異並給出 ❌ 錯誤示範"""
 
 # ---------------------------------------------------------------
-# 6. 呼叫 API，設定 max_tokens 避免無限生成
+# 6. 呼叫 API
+#    Gemma/llama.cpp 對 system role 支援不穩定，有時回傳空字串。
+#    最穩定的做法：把所有指令合併成單一 user message。
 # ---------------------------------------------------------------
+combined_prompt = system_prompt + "\n\n" + user_prompt
+
 print("⏳ 正在呼叫 API...")
 response = client.chat.completions.create(
-    model="local-model",   # llama.cpp / gemma.cpp 忽略此欄位
+    model="local-model",   # llama.cpp 忽略此欄位
     messages=[
-        {"role": "system", "content": system_prompt},
-        {"role": "user",   "content": user_prompt},
+        {"role": "user", "content": combined_prompt},
     ],
     temperature=0.3,
-    max_tokens=6000,   # 約可產出 3~4 頁 HTML，超過就強制截斷
+    max_tokens=6000,
 )
 
-raw_text = response.choices[0].message.content.strip()
+raw_text = response.choices[0].message.content
+if raw_text is None:
+    raw_text = ""
+raw_text = raw_text.strip()
+
 print(f"✅ API 回應完成，長度：{len(raw_text)} 字元")
+
+# 回應為空時直接印出完整 response 物件方便除錯
+if len(raw_text) == 0:
+    print(f"❌ 回應為空，完整 response 物件：")
+    print(f"  finish_reason : {response.choices[0].finish_reason}")
+    print(f"  usage         : {response.usage}")
+    raise ValueError("API 回傳空回應，請檢查模型是否正常運作。")
 
 # 7. 解析回應
 #
