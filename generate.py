@@ -1,11 +1,11 @@
 import os
 import json
 import re
-import google.generativeai as genai
+from openai import OpenAI
 import glob
 
 # 1. 取得環境變數
-api_key = os.environ.get("GEMINI_API_KEY")
+api_key = os.environ.get("LLAMA_API_KEY")
 issue_title = os.environ.get("ISSUE_TITLE", "未命名文法")
 issue_body = os.environ.get("ISSUE_BODY", "")
 
@@ -14,11 +14,10 @@ existing_files = glob.glob("[0-9][0-9]-*.html")
 next_number = len(existing_files) + 1
 formatted_number = f"{next_number:02d}"
 
-# 3. 設定 Gemini API
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel(
-    'gemini-2.5-flash',
-    generation_config={"response_mime_type": "application/json"}
+# 3. 設定本地 LLaMA API（OpenAI SDK 格式）
+client = OpenAI(
+    api_key=api_key,
+    base_url="https://gangway-remedy-unrobed.ngrok-free.dev/v1",
 )
 
 # 4. Prompt
@@ -70,12 +69,12 @@ prompt = f"""
 樣式規範：
 - 日文例句中的漢字：使用 <ruby>漢字<rt>讀音</rt></ruby> 標註振假名
 - 禁止對繁體中文字使用 <ruby> 標籤
-- 日文例句中提及的【文法主題】「{issue_title}」的日文字：使用 <span class="grammar-highlight"> 包裝。
--【重要】當某個日文漢字「同時需要振假名 AND <span class="grammar-highlight">標示」時，巢狀順序必須是：
-     <ruby> 在外層，<span class="grammar-highlight"> 在內層包住漢字本體，<rt> 放在 span 之後：
-     ✅ 正確：<ruby><span class="grammar-highlight">関</span><rt>かか</rt></ruby><span class="grammar-highlight">わる</span>
-     ❌ 錯誤：<span class="grammar-highlight"><ruby>挙句<rt>あげく</rt></ruby></span>
-     錯誤寫法會導致振假名完全無法顯示，請務必遵守。
+- 日文例句中提及的【文法主題】「{issue_title}」的日文字：使用 <span class="grammar-highlight"> 包裝
+- 【重要】當某個日文漢字「同時需要振假名 AND grammar-highlight 標示」時，巢狀順序必須是：
+  <ruby> 在外層，<span class="grammar-highlight"> 在內層包住漢字本體，<rt> 放在 span 之後：
+  ✅ 正確：<ruby><span class="grammar-highlight">関</span><rt>かか</rt></ruby><span class="grammar-highlight">わる</span>
+  ❌ 錯誤：<span class="grammar-highlight"><ruby>挙句<rt>あげく</rt></ruby></span>
+  錯誤寫法會導致振假名完全無法顯示，請務必遵守。
 - 除了文法主題以外，其他需要強調的說明文字：使用 <strong> 包裝
 
 例句排版規範：
@@ -95,48 +94,70 @@ title 欄位：
 
 ---
 
-【輸出的 JSON 結構】
+【輸出格式】
+請只輸出一個合法的 JSON 物件，不要有任何說明文字、markdown 區塊或其他內容：
 {{
-  "romaji_slug": "romaji",  // 只需要提供該文法核心的羅馬拼音，不需要數字和副檔名
-  "title": "「～文法項目」中文意思",  // 只填文法項目與中文意思，禁止加任何前綴
-  "content_html": "..."
+  "romaji_slug": "只填文法核心的羅馬拼音（小寫、空格用連字號，不含數字與副檔名）",
+  "title": "「～文法項目」中文意思",
+  "content_html": "完整的 HTML 內容字串"
 }}
 """
 
-# 5. 呼叫 AI 並解析 JSON
-response = model.generate_content(prompt)
-ai_data = json.loads(response.text)
+# 5. 呼叫本地 LLaMA API
+print("⏳ 正在呼叫 LLaMA API...")
+response = client.chat.completions.create(
+    model="local-model",   # llama.cpp 忽略此參數，填任意字串即可
+    messages=[
+        {
+            "role": "system",
+            "content": "你是一個專業的日文文法老師與 HTML 排版專家。請嚴格按照使用者要求的 JSON 格式輸出，不要輸出任何其他內容。"
+        },
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ],
+    temperature=0.3,   # 低溫度讓格式輸出更穩定
+)
 
-# 6. 在 Python 端強制加上編號前綴，不依賴 AI
-#    這樣就算 AI 沒有在 title 加編號，這裡也會統一補上
+raw_text = response.choices[0].message.content.strip()
+
+# 6. 解析 JSON（容錯處理：移除可能包住 JSON 的 markdown 區塊）
+cleaned = re.sub(r'^```(?:json)?\s*', '', raw_text)
+cleaned = re.sub(r'\s*```$', '', cleaned).strip()
+
+try:
+    ai_data = json.loads(cleaned)
+except json.JSONDecodeError as e:
+    print(f"❌ JSON 解析失敗：{e}")
+    print(f"--- AI 原始回應 ---\n{raw_text}\n---")
+    raise
+
+# 7. 在 Python 端強制組裝標題，完全不依賴 AI 的格式
 raw_title = ai_data["title"].strip()
 
-# 移除 AI 可能自行加上的各種前綴，例如：
-#   「N2文法07」、「N2 文法07」、「N2」、「文法07」 等
-raw_title = re.sub(r'^(N\d+\s*)?文法\d*\s*', '', raw_title)  # 移除「N2文法07」「文法07」
-raw_title = re.sub(r'^N\d+\s*',              '', raw_title)  # 移除殘留的「N2」
- 
+# 移除 AI 可能自行加上的各種前綴
+raw_title = re.sub(r'^(N\d+\s*)?文法\d*\s*', '', raw_title)
+raw_title = re.sub(r'^N\d+\s*', '', raw_title)
+
 full_title = f"N2文法{formatted_number}{raw_title}"
 ai_data["title"] = full_title
 
-
-# 7. 組裝檔名與讀取 HTML 模板
+# 8. 組裝檔名與讀取 HTML 模板
 new_filename = f"{formatted_number}-{ai_data['romaji_slug']}.html"
 
 with open("template.html", "r", encoding="utf-8") as f:
     template = f.read()
 
-# template.html 中的佔位符：{{title}} 和 {{content_html}}
 template = template.replace("{{title}}", full_title)
 template = template.replace("{{content_html}}", ai_data["content_html"])
 
-# 儲存新的 HTML 檔案
 with open(new_filename, "w", encoding="utf-8") as f:
     f.write(template)
 
 print(f"✅ 已產生檔案：{new_filename}（標題：{full_title}）")
 
-# 8. 更新 index.html（透過錨點精準插入）
+# 9. 更新 index.html
 with open("index.html", "r", encoding="utf-8") as f:
     index_content = f.read()
 
