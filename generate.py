@@ -51,7 +51,7 @@ system_prompt = """你是一個專業的日文文法老師，同時熟悉 HTML �
 # ---------------------------------------------------------------
 # 5. User prompt：只放「文法主題 + 內容要求」，不重複 HTML 規則
 # ---------------------------------------------------------------
-user_prompt = f"""請為以下 N2 文法主題，參照時雨日文網站（https://www.sigure.tw/learn-japanese/grammar/n3/）產出教學頁面：
+user_prompt = f"""請為以下 N2 文法主題產出教學頁面：
 
 文法主題：「{issue_title}」
 補充備註：{issue_body if issue_body else "（無）"}
@@ -80,16 +80,48 @@ response = client.chat.completions.create(
 raw_text = response.choices[0].message.content.strip()
 print(f"✅ API 回應完成，長度：{len(raw_text)} 字元")
 
-# 7. 解析 JSON（移除模型可能包住的 markdown 區塊）
+# 7. 解析回應
+#
+# Gemma 等本地模型常在 content_html 裡產出未跳脫的引號，
+# 導致 json.loads() 失敗。解法：先嘗試標準解析，
+# 失敗時改用 regex 逐欄位抽取，完全繞過引號跳脫問題。
+
+def extract_by_regex(text):
+    """從模型回應中用 regex 直接抽取三個欄位，不依賴 JSON 解析。"""
+    slug  = re.search(r'"romaji_slug"\s*:\s*"([^"]+)"', text)
+    title = re.search(r'"title"\s*:\s*"([^"]+)"',       text)
+    # content_html 的值可能包含引號，因此從第一個 <  抓到最後一個 >
+    html  = re.search(r'"content_html"\s*:\s*"(.*)"',   text, re.S)
+
+    if not (slug and title and html):
+        raise ValueError("regex 無法抽取三個必要欄位，請檢查 AI 原始回應。")
+
+    # 還原模型可能做了的基本跳脫（\n → 換行、\" → "）
+    content = html.group(1)
+    content = content.replace('\\n', '\n').replace('\\"', '"')
+
+    return {
+        "romaji_slug":  slug.group(1).strip(),
+        "title":        title.group(1).strip(),
+        "content_html": content,
+    }
+
+# 移除可能包住 JSON 的 markdown 區塊
 cleaned = re.sub(r'^```(?:json)?\s*', '', raw_text)
-cleaned = re.sub(r'\s*```$', '',       cleaned).strip()
+cleaned = re.sub(r'\s*```$', '', cleaned).strip()
 
 try:
     ai_data = json.loads(cleaned)
+    print("✅ JSON 標準解析成功")
 except json.JSONDecodeError as e:
-    print(f"❌ JSON 解析失敗：{e}")
-    print(f"--- AI 原始回應（前 500 字）---\n{raw_text[:500]}\n---")
-    raise
+    print(f"⚠️  JSON 標準解析失敗（{e}），改用 regex 抽取...")
+    try:
+        ai_data = extract_by_regex(raw_text)
+        print("✅ regex 抽取成功")
+    except ValueError as e2:
+        print(f"❌ regex 抽取也失敗：{e2}")
+        print(f"--- AI 原始回應（前 800 字）---\n{raw_text[:800]}\n---")
+        raise
 
 # 8. Python 端強制組裝標題（不信任 AI 的格式）
 raw_title = ai_data["title"].strip()
