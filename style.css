@@ -14,7 +14,7 @@ h1, h2, h3, h4 {
     color: #FFFFFF;
 }
 
-strong {
+strong, b {
     color: #f3f18b;
 }
 
