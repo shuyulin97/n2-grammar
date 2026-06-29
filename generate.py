@@ -1,7 +1,8 @@
 import os
 import json
 import re
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import glob
 
 # 1. 取得環境變數
@@ -14,12 +15,8 @@ existing_files = glob.glob("[0-9][0-9]-*.html")
 next_number = len(existing_files) + 1
 formatted_number = f"{next_number:02d}"
 
-# 3. 設定 Gemini API
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel(
-    'gemini-2.5-pro',
-    generation_config={"response_mime_type": "application/json"}
-)
+# 3. 設定 Gemini API（新版 google-genai SDK）
+client = genai.Client(api_key=api_key)
 
 # 4. Prompt
 prompt = f"""
@@ -103,11 +100,33 @@ title 欄位：
 }}
 """
 
-# 5. 呼叫 AI 並解析 JSON
-response = model.generate_content(prompt)
-ai_data = json.loads(response.text)
+# 5. 呼叫 Gemini API（新版 SDK）
+print("⏳ 正在呼叫 Gemini 2.5 Pro API...")
+response = client.models.generate_content(
+    model="gemini-2.5-pro",
+    contents=prompt,
+    config=types.GenerateContentConfig(
+        temperature=1,            # Pro 建議用預設溫度，避免過低導致截斷
+        response_mime_type="application/json",
+    ),
+)
 
-# 6. 在 Python 端強制加上編號前綴，不依賴 AI
+raw_text = response.text.strip()
+print(f"✅ API 回應完成，長度：{len(raw_text)} 字元")
+
+# 6. 解析 JSON（移除模型可能包住的 markdown 區塊）
+cleaned = re.sub(r'^```(?:json)?\s*', '', raw_text)
+cleaned = re.sub(r'\s*```$', '', cleaned).strip()
+
+try:
+    ai_data = json.loads(cleaned)
+    print("✅ JSON 解析成功")
+except json.JSONDecodeError as e:
+    print(f"❌ JSON 解析失敗：{e}")
+    print(f"--- AI 原始回應（前 800 字）---\n{raw_text[:800]}\n---")
+    raise
+
+# 7. 在 Python 端強制加上編號前綴，不依賴 AI
 #    這樣就算 AI 沒有在 title 加編號，這裡也會統一補上
 raw_title = ai_data["title"].strip()
 
@@ -120,7 +139,7 @@ full_title = f"N2文法{formatted_number}{raw_title}"
 ai_data["title"] = full_title
 
 
-# 7. 組裝檔名與讀取 HTML 模板
+# 8. 組裝檔名與讀取 HTML 模板
 new_filename = f"{formatted_number}-{ai_data['romaji_slug']}.html"
 
 with open("template.html", "r", encoding="utf-8") as f:
@@ -136,7 +155,7 @@ with open(new_filename, "w", encoding="utf-8") as f:
 
 print(f"✅ 已產生檔案：{new_filename}（標題：{full_title}）")
 
-# 8. 更新 index.html（透過錨點精準插入）
+# 9. 更新 index.html（透過錨點精準插入）
 with open("index.html", "r", encoding="utf-8") as f:
     index_content = f.read()
 
