@@ -17,7 +17,7 @@ formatted_number = f"{next_number:02d}"
 # 3. 設定 Gemini API
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel(
-    'gemini-2.5-flash',
+    'gemini-2.5-pro',
     generation_config={"response_mime_type": "application/json"}
 )
 
