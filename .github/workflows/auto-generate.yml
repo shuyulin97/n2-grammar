@@ -39,7 +39,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-        run: python generate_pro.py
+        run: python generate.py
 
       # 5. 將新增的 HTML 檔案和修改後的 index.html Commit 並 Push 到儲存庫
       - name: Commit and push changes
