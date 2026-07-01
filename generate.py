@@ -103,7 +103,7 @@ title 欄位：
 # 5. 呼叫 Gemini API（新版 SDK）
 print("⏳ 正在呼叫 Gemini 2.5 Pro API...")
 response = client.models.generate_content(
-    model="gemini-2.5-pro",
+    model="gemini-2.5-flash",
     contents=prompt,
     config=types.GenerateContentConfig(
         temperature=1,            # Pro 建議用預設溫度，避免過低導致截斷
