@@ -140,13 +140,28 @@ def generate_ai_data(prompt_text: str) -> dict:
 
     for attempt in range(1, MAX_RETRIES + 1):
         print(f"⏳ 正在呼叫 Gemini 2.5 Pro API...（第 {attempt}/{MAX_RETRIES} 次嘗試）")
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt_text,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-            ),
-        )
+
+        # 0) API 呼叫本身也可能失敗（例如 503 過載、429 限流、暫時性網路錯誤），
+        #    這裡必須單獨接住，否則例外會直接往外拋，完全跳過後面的重試邏輯。
+        try:
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt_text,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                ),
+            )
+        except Exception as e:
+            print(f"❌ 第 {attempt} 次 API 呼叫失敗：{e}")
+            last_error = e
+            if attempt < MAX_RETRIES:
+                wait_time = RETRY_DELAY_SECONDS * attempt  # 遞增等待：3s → 6s → 9s
+                print(f"🔁 伺服器可能暫時過載，{wait_time} 秒後重試...")
+                time.sleep(wait_time)
+                continue  # 跳過本輪剩餘步驟，重新呼叫 API
+            else:
+                break  # 已達最大重試次數，跳出迴圈統一報錯
+
         raw_text = strip_code_fence(response.text)
         print(f"✅ API 回應完成，長度：{len(raw_text)} 字元")
 
@@ -174,8 +189,11 @@ def generate_ai_data(prompt_text: str) -> dict:
             time.sleep(RETRY_DELAY_SECONDS)
 
     # 全部嘗試都失敗，印出原始回應方便除錯，並中止流程
-    print("--- AI 原始回應（前 800 字）---")
-    print(raw_text[:800])
+    if raw_text:
+        print("--- AI 原始回應（前 800 字）---")
+        print(raw_text[:800])
+    else:
+        print("--- 每次嘗試皆在 API 呼叫階段就失敗，沒有取得任何回應內容 ---")
     raise RuntimeError(f"經過 {MAX_RETRIES} 次嘗試仍無法取得有效 JSON，最後錯誤：{last_error}")
 
 
