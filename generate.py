@@ -2,7 +2,8 @@ import os
 import json
 import re
 import time
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import glob
 from json_repair import repair_json
 
@@ -16,12 +17,9 @@ existing_files = glob.glob("[0-9][0-9]-*.html")
 next_number = len(existing_files) + 1
 formatted_number = f"{next_number:02d}"
 
-# 3. 設定 Gemini API
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel(
-    'gemini-2.5-pro',
-    generation_config={"response_mime_type": "application/json"}
-)
+# 3. 設定 Gemini API（新版統一 SDK：google-genai）
+client = genai.Client(api_key=api_key)
+MODEL_NAME = "gemini-2.5-pro"
 
 # 4. Prompt
 prompt = f"""
@@ -142,7 +140,13 @@ def generate_ai_data(prompt_text: str) -> dict:
 
     for attempt in range(1, MAX_RETRIES + 1):
         print(f"⏳ 正在呼叫 Gemini 2.5 Pro API...（第 {attempt}/{MAX_RETRIES} 次嘗試）")
-        response = model.generate_content(prompt_text)
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt_text,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
+        )
         raw_text = strip_code_fence(response.text)
         print(f"✅ API 回應完成，長度：{len(raw_text)} 字元")
 
