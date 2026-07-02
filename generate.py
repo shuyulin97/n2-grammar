@@ -13,8 +13,18 @@ issue_title = os.environ.get("ISSUE_TITLE", "未命名文法")
 issue_body = os.environ.get("ISSUE_BODY", "")
 
 # 2. 自動計算下一個檔案序號
-existing_files = glob.glob("[0-9][0-9]-*.html")
-next_number = len(existing_files) + 1
+#    改為直接掃描所有 html 檔名開頭的數字，取「最大值 + 1」。
+#    （原本用 glob.glob("[0-9][0-9]-*.html") 只認得剛好兩位數的檔名，
+#      一旦編號進入三位數（100 以上）就抓不到，導致編號卡住重複；
+#      用「檔案數量」推算下一號也很脆弱，只要中途刪過檔案或編號不連續就會算錯，
+#      因此改用「掃描現有最大編號」的方式，較為穩健。）
+existing_numbers = []
+for fname in glob.glob("*.html"):
+    match = re.match(r'^(\d+)-', os.path.basename(fname))
+    if match:
+        existing_numbers.append(int(match.group(1)))
+
+next_number = (max(existing_numbers) + 1) if existing_numbers else 1
 formatted_number = f"{next_number:02d}"
 
 # 3. 設定 Gemini API（新版統一 SDK：google-genai）
