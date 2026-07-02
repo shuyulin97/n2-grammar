@@ -1,9 +1,10 @@
 import os
 import json
 import re
-from google import genai
-from google.genai import types
+import time
+import google.generativeai as genai
 import glob
+from json_repair import repair_json
 
 # 1. 取得環境變數
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -15,8 +16,12 @@ existing_files = glob.glob("[0-9][0-9]-*.html")
 next_number = len(existing_files) + 1
 formatted_number = f"{next_number:02d}"
 
-# 3. 設定 Gemini API（新版 google-genai SDK）
-client = genai.Client(api_key=api_key)
+# 3. 設定 Gemini API
+genai.configure(api_key=api_key)
+model = genai.GenerativeModel(
+    'gemini-2.5-pro',
+    generation_config={"response_mime_type": "application/json"}
+)
 
 # 4. Prompt
 prompt = f"""
@@ -56,6 +61,18 @@ prompt = f"""
 
 ---
 
+【極重要】JSON 安全規則（違反會導致整份輸出無法解析，請務必遵守）：
+- 整個回應必須是合法 JSON，因此 content_html 這個字串「絕對不可以出現雙引號 " 」。
+- 所有 HTML 屬性一律使用單引號：
+  ✅ 正確：<span class='grammar-highlight'>...</span>、<table class='compare-table'>
+  ❌ 錯誤：<span class="grammar-highlight">...</span>（雙引號會破壞 JSON 格式，導致解析失敗）
+- 發音按鈕請用單引號包住整個 onclick 屬性，句子本身則用反引號（`）包住，不要用單引號或雙引號：
+  ✅ 正確：<button onclick='speakSentence(`純日文字串，不含HTML標籤`)'>🔊 發音</button>
+  ❌ 錯誤：<button onclick="speakSentence('...')">🔊 發音</button>
+- content_html 內請勿包含未轉義的換行符，請將整段內容寫成一行（不要按 Enter 換行），區塊之間用 <hr>、<p> 等標籤分隔即可。
+
+---
+
 【HTML 排版規則】
 
 標題層級：
@@ -67,23 +84,23 @@ prompt = f"""
 樣式規範：
 - 日文例句中的漢字：使用 <ruby>漢字<rt>讀音</rt></ruby> 標註振假名
 - 禁止對繁體中文字使用 <ruby> 標籤
-- 日文例句中提及的【文法主題】「{issue_title}」的日文字：使用 <span class="grammar-highlight"> 包裝。
--【重要】當某個日文漢字「同時需要振假名 AND <span class="grammar-highlight">標示」時，巢狀順序必須是：
-     <ruby> 在外層，<span class="grammar-highlight"> 在內層包住漢字本體，<rt> 放在 span 之後：
-     ✅ 正確：<ruby><span class="grammar-highlight">関</span><rt>かか</rt></ruby><span class="grammar-highlight">わる</span>
-     ❌ 錯誤：<span class="grammar-highlight"><ruby>挙句<rt>あげく</rt></ruby></span>
+- 日文例句中提及的【文法主題】「{issue_title}」的日文字：使用 <span class='grammar-highlight'> 包裝。
+-【重要】當某個日文漢字「同時需要振假名 AND <span class='grammar-highlight'>標示」時，巢狀順序必須是：
+     <ruby> 在外層，<span class='grammar-highlight'> 在內層包住漢字本體，<rt> 放在 span 之後：
+     ✅ 正確：<ruby><span class='grammar-highlight'>関</span><rt>かか</rt></ruby><span class='grammar-highlight'>わる</span>
+     ❌ 錯誤：<span class='grammar-highlight'><ruby>挙句<rt>あげく</rt></ruby></span>
      錯誤寫法會導致振假名完全無法顯示，請務必遵守。
 - 除了文法主題以外，其他需要強調的說明文字：使用 <strong> 包裝
 
 例句排版規範：
 - 只要出現日文例句，句尾「一律」加上發音按鈕：
-  <button onclick="speakSentence('純日文字串，不含HTML標籤')">🔊 發音</button>
+  <button onclick='speakSentence(`純日文字串，不含HTML標籤`)'>🔊 發音</button>
 - 發音按鈕後換行，中文翻譯放在 <br> 之後，以（）包住
 - 【例文】區塊的例句用 <ul><li>...</li></ul> 包裝
 - 其他區塊（解說、比較）的例句依上下文直接排版，不強制加 <ul>
 
 比較表格：
-- 使用 <table class="compare-table"> 製作，欄位至少包含「文法句型」與「核心差異/使用限制」
+- 使用 <table class='compare-table'> 製作，欄位至少包含「文法句型」與「核心差異/使用限制」
 - 表格內的日文例句也要加上發音按鈕
 
 title 欄位：
@@ -96,37 +113,72 @@ title 欄位：
 {{
   "romaji_slug": "romaji",  // 只需要提供該文法核心的羅馬拼音，不需要數字和副檔名
   "title": "「～文法項目」中文意思",  // 只填文法項目與中文意思，禁止加任何前綴
-  "content_html": "..."
+  "content_html": "..."  // 記得：內部絕對不可出現雙引號，屬性一律用單引號
 }}
 """
 
-# 5. 呼叫 Gemini API（新版 SDK）
-print("⏳ 正在呼叫 Gemini 2.5 Pro API...")
-response = client.models.generate_content(
-    model="gemini-2.5-pro",
-    contents=prompt,
-    config=types.GenerateContentConfig(
-        temperature=1,            # Pro 建議用預設溫度，避免過低導致截斷
-        response_mime_type="application/json",
-    ),
-)
+# 重試相關設定
+MAX_RETRIES = 3
+RETRY_DELAY_SECONDS = 3
 
-raw_text = response.text.strip()
-print(f"✅ API 回應完成，長度：{len(raw_text)} 字元")
 
-# 6. 解析 JSON（移除模型可能包住的 markdown 區塊）
-cleaned = re.sub(r'^```(?:json)?\s*', '', raw_text)
-cleaned = re.sub(r'\s*```$', '', cleaned).strip()
+def strip_code_fence(text: str) -> str:
+    """移除 AI 可能誤加的 ```json 或 ``` 標記（保險用）。"""
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r'^```(json)?', '', text).strip()
+        text = re.sub(r'```$', '', text).strip()
+    return text
 
-try:
-    ai_data = json.loads(cleaned)
-    print("✅ JSON 解析成功")
-except json.JSONDecodeError as e:
-    print(f"❌ JSON 解析失敗：{e}")
-    print(f"--- AI 原始回應（前 800 字）---\n{raw_text[:800]}\n---")
-    raise
 
-# 7. 在 Python 端強制加上編號前綴，不依賴 AI
+def generate_ai_data(prompt_text: str) -> dict:
+    """
+    呼叫 Gemini API 產生內容。
+    若 JSON 解析失敗，會先嘗試用 json_repair 修復；
+    修復也失敗的話，最多重新呼叫 API MAX_RETRIES 次。
+    """
+    last_error = None
+    raw_text = ""
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        print(f"⏳ 正在呼叫 Gemini 2.5 Pro API...（第 {attempt}/{MAX_RETRIES} 次嘗試）")
+        response = model.generate_content(prompt_text)
+        raw_text = strip_code_fence(response.text)
+        print(f"✅ API 回應完成，長度：{len(raw_text)} 字元")
+
+        # 1) 先嘗試直接解析
+        try:
+            return json.loads(raw_text)
+        except json.JSONDecodeError as e:
+            print(f"⚠️ 第 {attempt} 次直接解析失敗：{e}")
+            last_error = e
+
+        # 2) 直接解析失敗時，用 json_repair 嘗試修復
+        #    （常見可修復的問題：漏轉義的引號、多餘/缺少逗號、未閉合括號等）
+        try:
+            repaired = repair_json(raw_text)
+            data = json.loads(repaired)
+            print("✅ 使用 json_repair 修復成功，繼續執行")
+            return data
+        except Exception as e:
+            print(f"❌ json_repair 也無法修復：{e}")
+            last_error = e
+
+        # 3) 兩種方式都失敗，且還有重試次數，就重新呼叫 API 產生新內容
+        if attempt < MAX_RETRIES:
+            print(f"🔁 {RETRY_DELAY_SECONDS} 秒後重新產生內容...")
+            time.sleep(RETRY_DELAY_SECONDS)
+
+    # 全部嘗試都失敗，印出原始回應方便除錯，並中止流程
+    print("--- AI 原始回應（前 800 字）---")
+    print(raw_text[:800])
+    raise RuntimeError(f"經過 {MAX_RETRIES} 次嘗試仍無法取得有效 JSON，最後錯誤：{last_error}")
+
+
+# 5. 呼叫 AI 並解析 JSON（含自動重試與修復）
+ai_data = generate_ai_data(prompt)
+
+# 6. 在 Python 端強制加上編號前綴，不依賴 AI
 #    這樣就算 AI 沒有在 title 加編號，這裡也會統一補上
 raw_title = ai_data["title"].strip()
 
@@ -134,12 +186,12 @@ raw_title = ai_data["title"].strip()
 #   「N2文法07」、「N2 文法07」、「N2」、「文法07」 等
 raw_title = re.sub(r'^(N\d+\s*)?文法\d*\s*', '', raw_title)  # 移除「N2文法07」「文法07」
 raw_title = re.sub(r'^N\d+\s*',              '', raw_title)  # 移除殘留的「N2」
- 
+
 full_title = f"N2文法{formatted_number}{raw_title}"
 ai_data["title"] = full_title
 
 
-# 8. 組裝檔名與讀取 HTML 模板
+# 7. 組裝檔名與讀取 HTML 模板
 new_filename = f"{formatted_number}-{ai_data['romaji_slug']}.html"
 
 with open("template.html", "r", encoding="utf-8") as f:
@@ -155,7 +207,7 @@ with open(new_filename, "w", encoding="utf-8") as f:
 
 print(f"✅ 已產生檔案：{new_filename}（標題：{full_title}）")
 
-# 9. 更新 index.html（透過錨點精準插入）
+# 8. 更新 index.html（透過錨點精準插入）
 with open("index.html", "r", encoding="utf-8") as f:
     index_content = f.read()
 
