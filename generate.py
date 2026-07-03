@@ -77,7 +77,7 @@ prompt = f"""
 - 發音按鈕請用單引號包住整個 onclick 屬性，句子本身則用反引號（`）包住，不要用單引號或雙引號：
   ✅ 正確：<button onclick='speakSentence(`純日文字串，不含HTML標籤`)'>🔊 發音</button>
   ❌ 錯誤：<button onclick="speakSentence('...')">🔊 發音</button>
-- content_html 內請勿包含未轉義的換行符，請將整段內容寫成一行（不要按 Enter 換行），區塊之間用 <hr>、<p> 等標籤分隔即可。
+- 換行沒有限制，正常依區塊分行即可，不需要刻意擠成一行，JSON 格式會自動處理必要的換行跳脫。
 
 ---
 
@@ -207,8 +207,41 @@ def generate_ai_data(prompt_text: str) -> dict:
     raise RuntimeError(f"經過 {MAX_RETRIES} 次嘗試仍無法取得有效 JSON，最後錯誤：{last_error}")
 
 
+def format_html(html: str) -> str:
+    """
+    在 content_html 的關鍵區塊標籤前後補上換行，讓輸出的 HTML 原始碼容易閱讀。
+
+    這一步是在 JSON 已經成功解析、拿到「純文字字串」之後才做的後製，
+    純粹是字串處理，不會經過任何 JSON 編碼/解碼，因此完全不會有破壞 JSON
+    格式的風險——不管 AI 這次自己有沒有換行、換得漂不漂亮，最後產出的
+    檔案格式都會是一致、可讀的。
+    """
+    # 這些標籤本身獨立成一行（前後都換行）
+    standalone_tags = ['<hr>']
+    for tag in standalone_tags:
+        html = html.replace(tag, f'\n{tag}\n')
+
+    # 這些標籤「前面」換行，讓區塊的開頭標籤獨立起始一行
+    start_tags = ['<h3', '<h4', '<table', '<ul>']
+    for tag in start_tags:
+        html = html.replace(tag, f'\n{tag}')
+
+    # 這些標籤「後面」換行，讓區塊結尾後另起一行
+    end_tags = ['</h3>', '</h4>', '</p>', '</li>', '</ul>', '</table>']
+    for tag in end_tags:
+        html = html.replace(tag, f'{tag}\n')
+
+    # 清掉因為替換而產生的多餘空白行，並移除行首行尾多餘空白
+    lines = [line.strip() for line in html.split('\n')]
+    lines = [line for line in lines if line]  # 移除空行
+    return '\n'.join(lines)
+
+
 # 5. 呼叫 AI 並解析 JSON（含自動重試與修復）
 ai_data = generate_ai_data(prompt)
+
+# 5-1. 自動排版，確保輸出的 HTML 原始碼可讀（不依賴 AI 是否配合換行）
+ai_data["content_html"] = format_html(ai_data["content_html"])
 
 # 6. 在 Python 端強制加上編號前綴，不依賴 AI
 #    這樣就算 AI 沒有在 title 加編號，這裡也會統一補上
